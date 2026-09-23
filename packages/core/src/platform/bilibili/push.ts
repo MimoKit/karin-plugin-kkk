@@ -30,7 +30,8 @@ import {
   processLocalImageFile,
   processImageUrl,
   Render,
-  uploadFile
+  uploadFile,
+  buildForwardOptions
 } from '@/module'
 import { bilibiliFetcher } from '@/module/utils/amagiClient'
 import { Config } from '@/module/utils/Config'
@@ -1059,12 +1060,11 @@ export class Bilibilipush extends Base {
 
                 const forwardMsg = common.makeForward(imgArray, botId, bot.account.name)
                 try {
-                  await bot.sendForwardMsg(Contact, forwardMsg, {
-                    source: '图片合集',
-                    summary: `查看${imgArray.length}张图片消息`,
-                    prompt: 'B站图文动态解析结果',
-                    news: [{ text: '点击查看解析结果' }]
-                  })
+                  await bot.sendForwardMsg(
+                    Contact,
+                    forwardMsg,
+                    buildForwardOptions('图片合集', `查看${imgArray.length}张图片消息`, 'B站图文动态解析结果')
+                  )
                 } finally {
                   for (const item of temp) {
                     await Common.removeFile(item.filepath, true)
@@ -1106,12 +1106,11 @@ export class Bilibilipush extends Base {
                 })
                 if (messageElements.length > 0) {
                   const forwardMsg = common.makeForward(messageElements, botId, bot.account.name)
-                  await bot.sendForwardMsg(Contact, forwardMsg, {
-                    source: '专栏内容',
-                    summary: `查看${messageElements.length}条专栏内容`,
-                    prompt: 'B站专栏动态解析结果',
-                    news: [{ text: '点击查看解析结果' }]
-                  })
+                  await bot.sendForwardMsg(
+                    Contact,
+                    forwardMsg,
+                    buildForwardOptions('专栏内容', `查看${messageElements.length}条专栏内容`, 'B站专栏动态解析结果')
+                  )
                 }
               }
             }

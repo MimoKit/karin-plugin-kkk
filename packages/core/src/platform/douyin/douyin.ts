@@ -22,7 +22,8 @@ import {
   processLocalImageFile,
   processImageUrl,
   Render,
-  uploadFile
+  uploadFile,
+  buildForwardOptions
 } from '@/module/utils'
 import { Config } from '@/module/utils/Config'
 import { EmojiReactionManager, getEmojiId } from '@/module/utils/EmojiReaction'
@@ -269,12 +270,11 @@ export class DouYin extends Base {
                       Config.app.fakeForward ? this.e.sender.userId : this.e.bot.account.selfId,
                       Config.app.fakeForward ? this.e.sender.nick : this.e.bot.account.name
                     )
-                    await this.e.bot.sendForwardMsg(this.e.contact, Element, {
-                      source: '图集内容',
-                      summary: `查看${Element.length}张图片/视频消息`,
-                      prompt: '抖音图集解析结果',
-                      news: [{ text: '点击查看解析结果' }]
-                    })
+                    await this.e.bot.sendForwardMsg(
+                      this.e.contact,
+                      Element,
+                      buildForwardOptions('图集内容', `查看${Element.length}张图片/视频消息`, '抖音图集解析结果')
+                    )
                   }
                 } finally {
                   for (const item of temp) {
@@ -317,12 +317,11 @@ export class DouYin extends Base {
                   const imageUrl = await processImageUrl(image_url, g_title)
                   await this.e.reply(segment.image(imageUrl))
                 } else {
-                  await this.e.bot.sendForwardMsg(this.e.contact, res, {
-                    source: '图片合集',
-                    summary: `查看${res.length}张图片消息`,
-                    prompt: '抖音图集解析结果',
-                    news: [{ text: '点击查看解析结果' }]
-                  })
+                  await this.e.bot.sendForwardMsg(
+                    this.e.contact,
+                    res,
+                    buildForwardOptions('图片合集', `查看${res.length}张图片消息`, '抖音图集解析结果')
+                  )
                 }
               }
               break
@@ -475,12 +474,11 @@ export class DouYin extends Base {
                     Config.app.fakeForward ? this.e.sender.userId : this.e.bot.account.selfId,
                     Config.app.fakeForward ? this.e.sender.nick : this.e.bot.account.name
                   )
-                  await this.e.bot.sendForwardMsg(this.e.contact, Element, {
-                    source: '合辑内容',
-                    summary: `查看${Element.length}张图片/视频消息`,
-                    prompt: '抖音合辑解析结果',
-                    news: [{ text: '点击查看解析结果' }]
-                  })
+                  await this.e.bot.sendForwardMsg(
+                    this.e.contact,
+                    Element,
+                    buildForwardOptions('合辑内容', `查看${Element.length}张图片/视频消息`, '抖音合辑解析结果')
+                  )
                 }
               } finally {
                 for (const item of temp) {
@@ -669,12 +667,11 @@ export class DouYin extends Base {
                 Config.app.fakeForward ? this.e.sender.userId : this.e.bot.account.selfId,
                 Config.app.fakeForward ? this.e.sender.nick : this.e.bot.account.name
               )
-              await this.e.bot.sendForwardMsg(this.e.contact, res, {
-                source: '评论图片收集',
-                summary: `查看${messageElements.length}张图片`,
-                prompt: '抖音评论解析结果',
-                news: [{ text: '点击查看解析结果' }]
-              })
+              await this.e.bot.sendForwardMsg(
+                this.e.contact,
+                res,
+                buildForwardOptions('评论图片收集', `查看${messageElements.length}张图片`, '抖音评论解析结果')
+              )
             }
             this.e.reply(img)
           }

@@ -127,13 +127,21 @@ export const loopVideoWithTransition = async (
     ]
 
     for (let i = 0; i < loopCount; i += 1) {
-      /** 单段视频裁切 */
+      /**
+       * 单段视频裁切。
+       *
+       * `trim` 之后必须显式补 `fps`：`xfade` 要求两路输入都是**恒定帧率**，
+       * 而 `trim` / `scale2ref` 会让帧率信息丢失（变成 `1/0`），只补 `settb`
+       * 补不回来。缺了它 xfade 直接报
+       * `The inputs needs to be a constant frame rate; current rate of 1/0 is invalid`
+       * 并让整条合成失败（多段时必现）。
+       */
       const start = Math.max(0, duration * i)
-      filterParts.push(`[vsplit${i}]trim=start=${start}:duration=${duration},setpts=PTS-STARTPTS,settb=1/1000[v${i}]`)
+      filterParts.push(`[vsplit${i}]trim=start=${start}:duration=${duration},setpts=PTS-STARTPTS,settb=1/1000,fps=${videoFps}[v${i}]`)
       /** 静态图与视频对齐尺寸 */
       filterParts.push(`[still${i}][v${i}]scale2ref=iw:ih:flags=lanczos[s${i}raw][v${i}r]`)
-      /** 静态图裁切为固定停留时间 */
-      filterParts.push(`[s${i}raw]trim=duration=${staticDuration},setpts=PTS-STARTPTS,settb=1/1000[s${i}]`)
+      /** 静态图裁切为固定停留时间（同样要补 fps，理由见上） */
+      filterParts.push(`[s${i}raw]trim=duration=${staticDuration},setpts=PTS-STARTPTS,settb=1/1000,fps=${videoFps}[s${i}]`)
     }
 
     /** 通过 xfade 串联视频与静态图片段 */

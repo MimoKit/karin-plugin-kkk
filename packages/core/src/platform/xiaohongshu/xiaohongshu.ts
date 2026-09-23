@@ -17,7 +17,8 @@ import {
   loopVideoWithTransition,
   processLocalImageFile,
   processImageUrl,
-  Render
+  Render,
+  buildForwardOptions
 } from '@/module'
 import type { ParseWorkType } from '@/module/db'
 import { Config } from '@/module/utils/Config'
@@ -362,12 +363,11 @@ export class Xiaohongshu extends Base {
         await this.e.reply(processedImages[0])
       } else if (processedImages.length > 1) {
         try {
-          await this.e.bot.sendForwardMsg(this.e.contact, res, {
-            source: '图片合集',
-            summary: `查看${res.length}张图片/视频消息`,
-            prompt: '小红书图集解析结果',
-            news: [{ text: '点击查看解析结果' }]
-          })
+          await this.e.bot.sendForwardMsg(
+            this.e.contact,
+            res,
+            buildForwardOptions('图片合集', `查看${res.length}张图片/视频消息`, '小红书图集解析结果')
+          )
         } finally {
           for (const item of temp) {
             await Common.removeFile(item.filepath, true)

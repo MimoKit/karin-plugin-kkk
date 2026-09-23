@@ -37,7 +37,8 @@ import {
   processLocalImageFile,
   processImageUrl,
   Render,
-  uploadFile
+  uploadFile,
+  buildForwardOptions
 } from '@/module/utils'
 import { bilibiliFetcher, isSoftFailure, SOFT_ERROR_CODES, softFetch } from '@/module/utils/amagiClient'
 import { Config } from '@/module/utils/Config'
@@ -261,12 +262,11 @@ export class Bilibili extends Base {
                   Config.app.fakeForward ? this.e.sender.userId : this.e.bot.account.selfId,
                   Config.app.fakeForward ? this.e.sender.nick : this.e.bot.account.name
                 )
-                await this.e.bot.sendForwardMsg(this.e.contact, res, {
-                  source: '评论图片收集',
-                  summary: `查看${messageElements.length}张图片`,
-                  prompt: 'B站评论解析结果',
-                  news: [{ text: '点击查看解析结果' }]
-                })
+                await this.e.bot.sendForwardMsg(
+                  this.e.contact,
+                  res,
+                  buildForwardOptions('评论图片收集', `查看${messageElements.length}张图片`, 'B站评论解析结果')
+                )
               }
 
               img = await Render(this.e, 'bilibili/comment', {
@@ -560,12 +560,11 @@ export class Bilibili extends Base {
                 Config.app.fakeForward ? this.e.sender.nick : this.e.bot.account.name
               )
               try {
-                await this.e.bot.sendForwardMsg(this.e.contact, forwardMsg, {
-                  source: '图片合集',
-                  summary: `查看${imgArray.length}张图片消息`,
-                  prompt: 'B站图文动态解析结果',
-                  news: [{ text: '点击查看解析结果' }]
-                })
+                await this.e.bot.sendForwardMsg(
+                  this.e.contact,
+                  forwardMsg,
+                  buildForwardOptions('图片合集', `查看${imgArray.length}张图片消息`, 'B站图文动态解析结果')
+                )
               } finally {
                 for (const item of temp) {
                   await Common.removeFile(item.filepath, true)
@@ -969,12 +968,11 @@ export class Bilibili extends Base {
                 Config.app.fakeForward ? this.e.sender.userId : this.e.bot.account.selfId,
                 Config.app.fakeForward ? this.e.sender.nick : this.e.bot.account.name
               )
-              await this.e.bot.sendForwardMsg(this.e.contact, forwardMsg, {
-                source: '专栏内容',
-                summary: `查看${messageElements.length}条专栏内容`,
-                prompt: 'B站专栏动态解析结果',
-                news: [{ text: '点击查看解析结果' }]
-              })
+              await this.e.bot.sendForwardMsg(
+                this.e.contact,
+                forwardMsg,
+                buildForwardOptions('专栏内容', `查看${messageElements.length}条专栏内容`, 'B站专栏动态解析结果')
+              )
             }
 
             // 构建渲染数据
@@ -1062,12 +1060,11 @@ export class Bilibili extends Base {
                   Config.app.fakeForward ? this.e.sender.userId : this.e.bot.account.selfId,
                   Config.app.fakeForward ? this.e.sender.nick : this.e.bot.account.name
                 )
-                await this.e.bot.sendForwardMsg(this.e.contact, res, {
-                  source: '评论图片收集',
-                  summary: `查看${messageElements.length}张图片`,
-                  prompt: 'B站评论解析结果',
-                  news: [{ text: '点击查看解析结果' }]
-                })
+                await this.e.bot.sendForwardMsg(
+                  this.e.contact,
+                  res,
+                  buildForwardOptions('评论图片收集', `查看${messageElements.length}张图片`, 'B站评论解析结果')
+                )
               }
 
               // 渲染评论图

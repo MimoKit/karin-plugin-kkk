@@ -22,7 +22,8 @@ import {
   Networks,
   processLocalImageFile,
   processImageUrl,
-  Render
+  Render,
+  buildForwardOptions
 } from '@/module'
 import { Config } from '@/module/utils/Config'
 import { logger } from '@/module/utils/logger'
@@ -566,12 +567,11 @@ export class DouYinpush extends Base {
                     logger.warn(`抖音合辑推送解析未生成可发送内容，aweme_id=${Detail_Data.aweme_id}`)
                   } else {
                     const Element = common.makeForward(images, botId, bot.account.name)
-                    await bot.sendForwardMsg(Contact, Element, {
-                      source: '合辑内容',
-                      summary: `查看${Element.length}张图片/视频消息`,
-                      prompt: '抖音合辑解析结果',
-                      news: [{ text: '点击查看解析结果' }]
-                    })
+                    await bot.sendForwardMsg(
+                      Contact,
+                      Element,
+                      buildForwardOptions('合辑内容', `查看${Element.length}张图片/视频消息`, '抖音合辑解析结果')
+                    )
                   }
                 } catch (error) {
                   logger.error(`发送合辑失败: ${error}`)
@@ -732,12 +732,11 @@ export class DouYinpush extends Base {
                       logger.warn(`抖音图集推送解析未生成可发送内容，aweme_id=${Detail_Data.aweme_id}`)
                     } else {
                       const Element = common.makeForward(processedImages, botId, bot.account.name)
-                      await bot.sendForwardMsg(Contact, Element, {
-                        source: '图集内容',
-                        summary: `查看${Element.length}张图片/视频消息`,
-                        prompt: '抖音图集解析结果',
-                        news: [{ text: '点击查看解析结果' }]
-                      })
+                      await bot.sendForwardMsg(
+                        Contact,
+                        Element,
+                        buildForwardOptions('图集内容', `查看${Element.length}张图片/视频消息`, '抖音图集解析结果')
+                      )
                     }
                   } catch (error) {
                     logger.error(`发送图集失败: ${error}`)
@@ -765,12 +764,11 @@ export class DouYinpush extends Base {
                   } else {
                     // 多张图片使用合并转发
                     const forwardMsg = common.makeForward(imageres, botId, bot.account.name)
-                    await bot.sendForwardMsg(Contact, forwardMsg, {
-                      source: '图片合集',
-                      summary: `查看${forwardMsg.length}张图片消息`,
-                      prompt: '抖音图集解析结果',
-                      news: [{ text: '点击查看解析结果' }]
-                    })
+                    await bot.sendForwardMsg(
+                      Contact,
+                      forwardMsg,
+                      buildForwardOptions('图片合集', `查看${forwardMsg.length}张图片消息`, '抖音图集解析结果')
+                    )
                   }
                 }
               }
