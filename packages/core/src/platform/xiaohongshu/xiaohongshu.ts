@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 
-import type { XiaohongshuNoteCommentsResponse, XiaohongshuEmojiListResponse } from '@ikenxuan/amagi'
+import type { XiaohongshuNoteCommentsResponse, XiaohongshuEmojiListResponse, XiaohongshuNoteDetailResponse } from '@ikenxuan/amagi'
 import type { RichTextEmojiDefinition } from '@kkk/richtext'
 import { format } from 'date-fns'
 import { common, type Elements, type Message, logger, segment } from 'node-karin'
@@ -23,6 +23,7 @@ import type { ParseWorkType } from '@/module/db'
 import { Config } from '@/module/utils/Config'
 
 import { buildXiaohongshuRichText, xiaohongshuComments } from './comments'
+import { fetchEmojiListFallback, fetchNoteDetailFallback, hasSigningCookie } from './fallback'
 import { XiaohongshuIdData } from './getID'
 
 // 定义小红书视频流类型
@@ -43,6 +44,15 @@ export type XhsVideoStream = {
   duration: number
   avg_bitrate: number
 }
+
+/**
+ * 笔记卡片。
+ *
+ * 直接复用 amagi 的 `note_card` 形状：接口路径原样返回它，无 Cookie 兜底路径
+ * 也会把页面字段整形成同一套 snake_case（见 {@link fetchNoteDetailFallback}），
+ * 所以下游不需要知道数据是从接口还是从笔记页来的。
+ */
+export type XhsNoteCard = XiaohongshuNoteDetailResponse['data']['items'][number]['note_card']
 
 export class Xiaohongshu extends Base {
   e: Message
@@ -81,68 +91,128 @@ export class Xiaohongshu extends Base {
     ).data
   }
 
-  async XiaohongshuHandler(data: XiaohongshuIdData) {
-    if (Config.amagi.cookies.xiaohongshu === '') {
-      throw new Error('我还没有小红书的 Cookies，暂时无法解析呢 ~')
+  /**
+   * 取笔记详情：优先走 amagi 接口（要登录态 Cookie），失败或没配 Cookie 时
+   * 回退到无 Cookie 的笔记页解析。
+   *
+   * 两条路径都返回同形的 `note_card`，调用方不需要区分来源。
+   * @param data - 笔记 ID 与 xsec_token
+   * @returns 笔记卡片，以及本次是否走了无 Cookie 兜底
+   */
+  private async resolveNoteCard(data: XiaohongshuIdData): Promise<{ noteCard: XhsNoteCard; fallback: boolean }> {
+    const cookie = Config.amagi.cookies.xiaohongshu
+
+    // 只有拿到带 a1 的 Cookie 才可能签出请求，否则直接走兜底，省一次注定失败的调用
+    if (hasSigningCookie(cookie)) {
+      try {
+        const noteData = await this.amagi.xiaohongshu.fetcher.fetchNoteDetail({
+          note_id: data.note_id,
+          xsec_token: data.xsec_token
+        })
+        const card = noteData.data.data.items[0].note_card
+        if (card) return { noteCard: card, fallback: false }
+        logger.warn('[小红书] 接口返回里没有 note_card，改用无 Cookie 兜底解析')
+      } catch (error) {
+        logger.warn(`[小红书] 接口解析失败，改用无 Cookie 兜底解析: ${String(error)}`)
+      }
+    } else if (cookie) {
+      logger.warn('[小红书] Cookie 里缺少 a1，无法完成签名，改用无 Cookie 兜底解析（补上 a1 后接口才会生效）')
     }
+
+    const fallbackData = await fetchNoteDetailFallback(data.note_id, data.xsec_token)
+    const card = fallbackData.data.items[0].note_card
+    if (!card) throw new Error('小红书笔记解析失败，没有取到笔记内容')
+    return { noteCard: card, fallback: true }
+  }
+
+  /**
+   * 取表情列表。
+   *
+   * 表情接口游客身份可用，接口路径走不通时直接抓一次即可，不必让整个解析失败。
+   * @returns 格式化后的表情数组
+   */
+  private async resolveEmojis(): Promise<RichTextEmojiDefinition[]> {
+    try {
+      const emojiList = await this.amagi.xiaohongshu.fetcher.fetchEmojiList()
+      return XiaohongshuEmoji(emojiList.data)
+    } catch (error) {
+      logger.debug(`[小红书] 表情接口不可用，改用直连兜底: ${String(error)}`)
+      try {
+        return XiaohongshuEmoji(await fetchEmojiListFallback())
+      } catch (fallbackError) {
+        logger.warn(`[小红书] 表情列表获取失败，按无表情渲染: ${String(fallbackError)}`)
+        return []
+      }
+    }
+  }
+
+  async XiaohongshuHandler(data: XiaohongshuIdData) {
     if (Config.app.parseTip) {
       await this.e.reply('检测到小红书链接，开始解析')
     }
-    const NoteData = await this.amagi.xiaohongshu.fetcher.fetchNoteDetail({
-      note_id: data.note_id,
-      xsec_token: data.xsec_token
-    })
+    const { noteCard, fallback } = await this.resolveNoteCard(data)
+    if (fallback) {
+      logger.mark('[小红书] 当前未配置 Cookie，已使用无 Cookie 兜底解析（不含评论区）')
+    }
     // 统计用的内容形态：有视频流算视频笔记，否则算图文（与 noteInfo/comment 模板里的判定一致）
-    this.workType = NoteData.data.data.items[0].note_card!.video ? 'video' : 'gallery'
-    const EmojiList = await this.amagi.xiaohongshu.fetcher.fetchEmojiList()
-    const formattedEmojis = XiaohongshuEmoji(EmojiList.data)
+    this.workType = noteCard.video ? 'video' : 'gallery'
+    const formattedEmojis = await this.resolveEmojis()
 
     // 笔记信息
     if (Config.xiaohongshu.sendContent.some((item) => item === 'info')) {
       const noteInfoImg = await Render(this.e, 'xiaohongshu/noteInfo', {
-        title: NoteData.data.data.items[0].note_card!.title,
-        desc: buildXiaohongshuRichText(NoteData.data.data.items[0].note_card!.desc, formattedEmojis, [], {
+        title: noteCard.title,
+        desc: buildXiaohongshuRichText(noteCard.desc, formattedEmojis, [], {
           stripTopicMarker: true
         }),
-        statistics: NoteData.data.data.items[0].note_card!.interact_info,
-        note_id: NoteData.data.data.items[0].note_card!.note_id,
-        author: NoteData.data.data.items[0].note_card!.user,
-        image_url: NoteData.data.data.items[0].note_card!.image_list[0].url_default,
-        time: NoteData.data.data.items[0].note_card!.time,
-        ip_location: NoteData.data.data.items[0].note_card!.ip_location,
+        statistics: noteCard.interact_info,
+        note_id: noteCard.note_id,
+        author: noteCard.user,
+        image_url: noteCard.image_list[0].url_default,
+        time: noteCard.time,
+        ip_location: noteCard.ip_location,
         share_url: `https://www.xiaohongshu.com/discovery/item/${data.note_id}?source=webshare&xhsshare=pc_web&xsec_token=${data.xsec_token}&xsec_source=pc_share`,
-        image_list: NoteData.data.data.items[0].note_card!.image_list?.map((image) => image.url_default) ?? [],
-        is_video: Boolean(NoteData.data.data.items[0].note_card!.video)
+        image_list: noteCard.image_list?.map((image) => image.url_default) ?? [],
+        is_video: Boolean(noteCard.video)
       })
       this.e.reply(noteInfoImg)
     }
 
     // 评论列表
     if (Config.xiaohongshu.sendContent.some((item) => item === 'comment')) {
-      const CommentData = await this.fetchConfiguredNoteComments(data)
-
-      if (!CommentData.data.comments || CommentData.data.comments.length === 0) {
-        await this.e.reply('这个笔记没有评论 ~')
+      // 评论区只有接口能给（笔记页 SSR 的评论恒为空），而接口要签名，所以缺 a1 时跳过而不是报错
+      if (!hasSigningCookie(Config.amagi.cookies.xiaohongshu)) {
+        logger.mark('[小红书] Cookie 缺少 a1，评论区接口不可用，已跳过评论渲染')
       } else {
-        // 使用简化的评论处理函数，直接返回评论数组
-        const processedComments = xiaohongshuComments(CommentData, formattedEmojis)
+        try {
+          const CommentData = await this.fetchConfiguredNoteComments(data)
 
-        const commentListImg = await Render(this.e, 'xiaohongshu/comment', {
-          Type: NoteData.data.data.items[0].note_card!.video ? '视频' : '图文',
-          CommentsData: processedComments,
-          CommentLength: processedComments.length,
-          ImageLength: NoteData.data.data.items[0].note_card!.image_list?.length || 0,
-          share_url: `https://www.xiaohongshu.com/discovery/item/${data.note_id}?source=webshare&xhsshare=pc_web&xsec_token=${data.xsec_token}&xsec_source=pc_share`,
-          AuthorAvatar: NoteData.data.data.items[0].note_card.user.avatar
-        })
-        this.e.reply(commentListImg)
+          if (!CommentData.data.comments || CommentData.data.comments.length === 0) {
+            await this.e.reply('这个笔记没有评论 ~')
+          } else {
+            // 使用简化的评论处理函数，直接返回评论数组
+            const processedComments = xiaohongshuComments(CommentData, formattedEmojis)
+
+            const commentListImg = await Render(this.e, 'xiaohongshu/comment', {
+              Type: noteCard.video ? '视频' : '图文',
+              CommentsData: processedComments,
+              CommentLength: processedComments.length,
+              ImageLength: noteCard.image_list?.length || 0,
+              share_url: `https://www.xiaohongshu.com/discovery/item/${data.note_id}?source=webshare&xhsshare=pc_web&xsec_token=${data.xsec_token}&xsec_source=pc_share`,
+              AuthorAvatar: noteCard.user.avatar
+            })
+            this.e.reply(commentListImg)
+          }
+        } catch (error) {
+          logger.warn(`[小红书] 评论获取失败，跳过评论渲染: ${String(error)}`)
+        }
       }
     }
 
     // 图片笔记
-    if (!NoteData.data.data.items[0].note_card!.video && Config.xiaohongshu.sendContent.includes('image')) {
+    if (!noteCard.video && Config.xiaohongshu.sendContent.includes('image')) {
       const processedImages: Elements[] = []
-      const title = NoteData.data.data.items[0].note_card!.title
+      const title = noteCard.title
       const temp: Array<{ filepath: string; totalBytes: number }> = []
       let hasGeneratedLivePhoto = false // 标记是否生成了实况图
 
@@ -156,7 +226,7 @@ export class Xiaohongshu extends Base {
       const mergeMode: LiveImageMergeOptions['mergeMode'] = 'continuous'
       let bgmContext: LiveImageMergeOptions['context'] | undefined = undefined
 
-      for (const [index, item] of NoteData.data.data.items[0].note_card!.image_list.entries()) {
+      for (const [index, item] of noteCard.image_list.entries()) {
         // 检查是否为实况图
         if (item.live_photo && item.stream && (shouldGenerateVideo || shouldGenerateLivePhoto)) {
           // 下载静态图片
@@ -307,8 +377,8 @@ export class Xiaohongshu extends Base {
     }
 
     // 视频笔记
-    if (NoteData.data.data.items[0].note_card!.video && Config.xiaohongshu.sendContent.includes('video')) {
-      const video = NoteData.data.data.items[0].note_card!.video
+    if (noteCard.video && Config.xiaohongshu.sendContent.includes('video')) {
+      const video = noteCard.video
 
       // 使用新的视频选择逻辑
       const selectedVideo = xiaohongshuProcessVideos(
